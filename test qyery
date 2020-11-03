@@ -1,0 +1,61 @@
+/*
+Script checks msdb to see if a mail profile exists.  If a mail profile exists the script does
+nothing.  Otherwise, the script creates a mail profile for use in Honeywell DCW environment. 
+*/
+
+
+	DECLARE @display_name	nvarchar(128)
+	
+	SET @display_name = 'IBMDBA ' + @@SERVERNAME; 
+	
+	IF NOT EXISTS(SELECT * FROM msdb.dbo.sysmail_profile)
+	  BEGIN 
+	  
+		BEGIN TRY 
+		
+			BEGIN TRAN 
+			-- Create a Database Mail account
+
+			EXECUTE msdb.dbo.sysmail_add_account_sp
+				@account_name = 'IBMDBA',
+	--			@description = 'Mail account for use by all database users.',
+				@email_address = 'dbqdbm02@us.ibm.com',
+				@replyto_address = '',
+				@display_name = @display_name, 
+				@mailserver_name = 'mta.kp.org' ;
+
+			-- Create a Database Mail profile
+
+			EXECUTE msdb.dbo.sysmail_add_profile_sp
+				@profile_name = 'IBMDBA'
+	--			, @description = 'Profile used for administrative mail.' ;
+
+			-- Add the account to the profile
+
+			EXECUTE msdb.dbo.sysmail_add_profileaccount_sp
+				@profile_name = 'IBMDBA'
+				, @account_name = 'IBMDBA'
+				, @sequence_number =1 ;
+
+			-- Grant access to the profile to all users in the msdb database
+
+			EXECUTE msdb.dbo.sysmail_add_principalprofile_sp
+				@profile_name = 'IBMDBA',
+				@principal_name = 'public',
+				@is_default = 1 ;
+				
+			COMMIT TRAN 
+			
+		END TRY
+		BEGIN CATCH 
+		
+			IF @@TRANCOUNT > 0 
+				ROLLBACK TRAN 
+				
+			SELECT ErrorMessage = ERROR_MESSAGE() 
+				, ErrorNumber = ERROR_NUMBER(); 
+					
+			
+		END CATCH
+	  END
+	  
